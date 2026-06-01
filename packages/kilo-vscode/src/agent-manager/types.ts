@@ -7,7 +7,7 @@
  * type-checked rather than relying on Record<string, unknown> casts.
  */
 
-import type { FileDiff } from "@kilocode/sdk/v2/client"
+import type { SnapshotFileDiff } from "@kilocode/sdk/v2/client"
 import type { Worktree, ManagedSession, Section } from "./WorktreeStateManager"
 import type { WorktreeStats, LocalStats } from "./GitStatsPoller"
 import type { ApplyConflict } from "./GitOps"
@@ -23,7 +23,9 @@ type SessionMode = "worktree" | "local"
 
 export type ApplyDiffStatus = "checking" | "applying" | "success" | "conflict" | "error"
 
-export type WorktreeDiffEntry = FileDiff & {
+export type WorktreeDiffEntry = SnapshotFileDiff & {
+  before?: string
+  after?: string
   tracked?: boolean
   generatedLike?: boolean
   summarized?: boolean
@@ -124,12 +126,38 @@ interface StateMessage {
   tabOrder?: Record<string, string[]>
   worktreeOrder?: string[]
   sessionsCollapsed?: boolean
+  sidebarCollapsed?: boolean
   reviewDiffStyle?: "unified" | "split"
+  reviewMarkdownRender?: boolean
   isGitRepo?: boolean
   defaultBaseBranch?: string
   runStatuses?: RunStatus[]
   runScriptConfigured?: boolean
   runScriptPath?: string
+}
+
+// ---------------------------------------------------------------------------
+// Terminal messages
+// ---------------------------------------------------------------------------
+
+interface TerminalCreatedMessage {
+  type: "agentManager.terminal.created"
+  /** null for LOCAL, worktree id otherwise */
+  worktreeId: string | null
+  terminalId: string
+  title: string
+  wsUrl: string
+}
+
+interface TerminalClosedMessage {
+  type: "agentManager.terminal.closed"
+  terminalId: string
+}
+
+interface TerminalErrorMessage {
+  type: "agentManager.terminal.error"
+  terminalId?: string
+  message: string
 }
 
 interface ErrorOutMessage {
@@ -283,6 +311,9 @@ export type AgentManagerOutMessage =
   | PRStatusOutMessage
   | ActionOutMessage
   | RunStatusMessage
+  | TerminalCreatedMessage
+  | TerminalClosedMessage
+  | TerminalErrorMessage
 
 // ---------------------------------------------------------------------------
 // Webview → Extension messages (onMessage)
@@ -317,6 +348,7 @@ interface OpenLocallyIn {
 interface AddSessionToWorktreeIn {
   type: "agentManager.addSessionToWorktree"
   worktreeId: string
+  sessionId?: string
 }
 
 interface CloseSessionIn {
@@ -426,9 +458,19 @@ interface SetSessionsCollapsedIn {
   collapsed: boolean
 }
 
+interface SetSidebarCollapsedIn {
+  type: "agentManager.setSidebarCollapsed"
+  collapsed: boolean
+}
+
 interface SetReviewDiffStyleIn {
   type: "agentManager.setReviewDiffStyle"
   style: "unified" | "split"
+}
+
+interface SetReviewMarkdownRenderIn {
+  type: "agentManager.setReviewMarkdownRender"
+  render: boolean
 }
 
 interface SetDefaultBaseBranchIn {
@@ -529,9 +571,18 @@ interface PreviewImageIn {
   filename: string
 }
 
+interface SaveImageIn {
+  type: "saveImage"
+  dataUrl: string
+  filename: string
+}
+
 interface LoadMessagesIn {
   type: "loadMessages"
   sessionID: string
+  mode?: "replace" | "prepend" | "focus"
+  before?: string
+  limit?: number
 }
 
 interface FileSourceIn {
@@ -555,6 +606,8 @@ interface SendMessageIn {
   agent?: string
   variant?: string
   files?: Array<{ mime: string; url: string; filename?: string; source?: FileSourceIn }>
+  agentManagerContext?: string
+  contextDirectory?: string
 }
 
 interface SendCommandIn {
@@ -569,6 +622,8 @@ interface SendCommandIn {
   agent?: string
   variant?: string
   files?: Array<{ mime: string; url: string; filename?: string; source?: FileSourceIn }>
+  agentManagerContext?: string
+  contextDirectory?: string
 }
 
 interface RequestTerminalContextIn {
@@ -585,6 +640,7 @@ interface ForkSessionIn {
   type: "agentManager.forkSession"
   sessionId: string
   worktreeId?: string
+  messageId?: string
 }
 
 interface AbortIn {
@@ -638,6 +694,28 @@ interface MoveSectionIn {
   dir: -1 | 1
 }
 
+// ---------------------------------------------------------------------------
+// Terminal inbound messages
+// ---------------------------------------------------------------------------
+
+interface TerminalCreateIn {
+  type: "agentManager.terminal.create"
+  /** null for LOCAL, worktree id otherwise */
+  worktreeId: string | null
+}
+
+interface TerminalCloseIn {
+  type: "agentManager.terminal.close"
+  terminalId: string
+}
+
+interface TerminalResizeIn {
+  type: "agentManager.terminal.resize"
+  terminalId: string
+  cols: number
+  rows: number
+}
+
 /** All messages the Agent Manager expects from the webview (onMessage input). */
 export type AgentManagerInMessage =
   | CreateWorktreeIn
@@ -667,7 +745,9 @@ export type AgentManagerInMessage =
   | SetTabOrderIn
   | SetWorktreeOrderIn
   | SetSessionsCollapsedIn
+  | SetSidebarCollapsedIn
   | SetReviewDiffStyleIn
+  | SetReviewMarkdownRenderIn
   | SetDefaultBaseBranchIn
   | RequestExternalWorktreesIn
   | ImportFromBranchIn
@@ -686,6 +766,7 @@ export type AgentManagerInMessage =
   | OpenFileIn
   | GenericOpenFileIn
   | PreviewImageIn
+  | SaveImageIn
   | LoadMessagesIn
   | SendMessageIn
   | SendCommandIn
@@ -700,3 +781,6 @@ export type AgentManagerInMessage =
   | ToggleSectionCollapsedIn
   | MoveToSectionIn
   | MoveSectionIn
+  | TerminalCreateIn
+  | TerminalCloseIn
+  | TerminalResizeIn

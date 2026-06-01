@@ -75,6 +75,8 @@ export const dict = {
   "ui.messagePart.context.list.one": "{{count}} 件のリスト",
   "ui.messagePart.context.list.other": "{{count}} 件のリスト",
   "ui.messagePart.diagnostic.error": "エラー",
+  "ui.messagePart.mcp.input": "入力",
+  "ui.messagePart.mcp.output": "出力",
   "ui.messagePart.title.edit": "編集",
   "ui.messagePart.title.write": "作成",
   "ui.messagePart.option.typeOwnAnswer": "自分の回答を入力",
@@ -93,6 +95,18 @@ export const dict = {
   "ui.textField.copied": "コピーしました",
 
   "ui.imagePreview.alt": "画像プレビュー",
+  // kilocode_change start
+  "ui.mermaid.rendering": "Mermaid 図をレンダリング中...",
+  "ui.mermaid.renderError": "Mermaid のレンダリングに失敗しました: {{message}}",
+  "ui.mermaid.errorDefault": "Mermaid 図をレンダリングできません。",
+  "ui.mermaid.errorEmpty": "Mermaid が空の図をレンダリングしました。",
+  "ui.mermaid.download": "ダウンロード",
+  "ui.mermaid.copySource": "Mermaid ソースをコピー",
+  "ui.mermaid.copySvg": "SVG をコピー",
+  "ui.mermaid.copyPng": "PNG をコピー",
+  "ui.mermaid.downloadSvg": "SVG をダウンロード",
+  "ui.mermaid.downloadPng": "PNG をダウンロード",
+  // kilocode_change end
   "ui.scrollView.ariaLabel": "スクロール可能なコンテンツ",
 
   "ui.tool.read": "読み込み",
@@ -102,7 +116,6 @@ export const dict = {
   "ui.tool.grep": "Grep",
   "ui.tool.webfetch": "Webfetch",
   "ui.tool.websearch": "Web検索",
-  "ui.tool.codesearch": "コード検索",
   "ui.tool.shell": "Shell",
   "ui.tool.patch": "Patch",
   "ui.tool.todos": "Todo",

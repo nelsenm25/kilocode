@@ -2,7 +2,7 @@ import { CliRenderEvents, SyntaxStyle, RGBA, type TerminalColors } from "@opentu
 import path from "path"
 import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "./helper"
-import { Glob } from "../../../../util/glob"
+import { Glob } from "@opencode-ai/core/util/glob"
 import aura from "./theme/aura.json" with { type: "json" }
 import ayu from "./theme/ayu.json" with { type: "json" }
 import catppuccin from "./theme/catppuccin.json" with { type: "json" }
@@ -17,6 +17,7 @@ import github from "./theme/github.json" with { type: "json" }
 import gruvbox from "./theme/gruvbox.json" with { type: "json" }
 import kanagawa from "./theme/kanagawa.json" with { type: "json" }
 import kilo from "./theme/kilo.json" with { type: "json" } // kilocode_change
+import kilo1 from "./theme/kilo-v1.json" with { type: "json" } // kilocode_change
 import material from "./theme/material.json" with { type: "json" }
 import matrix from "./theme/matrix.json" with { type: "json" }
 import mercury from "./theme/mercury.json" with { type: "json" }
@@ -41,7 +42,7 @@ import colorblind from "./theme/colorblind.json" with { type: "json" } // kiloco
 import { useKV } from "./kv"
 import { useRenderer } from "@opentui/solid"
 import { createStore, produce } from "solid-js/store"
-import { Global } from "@/global"
+import { Global } from "@opencode-ai/core/global"
 import { Filesystem } from "@/util/filesystem"
 import { useTuiConfig } from "./tui-config"
 import { isRecord } from "@/util/record"
@@ -102,6 +103,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   gruvbox,
   kanagawa,
   kilo, // kilocode_change
+  ["kilo-v1"]: kilo1, // kilocode_change
   material,
   matrix,
   mercury,
@@ -327,8 +329,11 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     setStore(
       produce((draft) => {
         const lock = pick(kv.get("theme_mode_lock"))
-        const mode = pick(kv.get("theme_mode", props.mode))
-        draft.mode = lock ?? mode ?? props.mode
+        const mode = lock ?? pick(renderer.themeMode) ?? props.mode
+        if (!lock && pick(kv.get("theme_mode")) !== undefined) {
+          kv.set("theme_mode", undefined)
+        }
+        draft.mode = mode
         draft.lock = lock
         const active = config.theme ?? kv.get("theme", "kilo") // kilocode_change
         draft.active = typeof active === "string" ? active : "kilo" // kilocode_change
@@ -342,7 +347,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     })
 
     function init() {
-      Promise.allSettled([
+      void Promise.allSettled([
         resolveSystemTheme(store.mode),
         getCustomThemes()
           .then((custom) => {
@@ -386,11 +391,11 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     }
 
     function apply(mode: "dark" | "light") {
-      kv.set("theme_mode", mode)
+      if (store.lock !== undefined) kv.set("theme_mode", mode)
       if (store.mode === mode) return
       setStore("mode", mode)
       renderer.clearPaletteCache()
-      resolveSystemTheme(mode)
+      void resolveSystemTheme(mode)
     }
 
     function pin(mode: "dark" | "light" = store.mode) {
@@ -402,6 +407,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     function free() {
       setStore("lock", undefined)
       kv.set("theme_mode_lock", undefined)
+      kv.set("theme_mode", undefined)
       const mode = renderer.themeMode
       if (mode) apply(mode)
     }
@@ -426,12 +432,16 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     // kilocode_change start - safe fallback to kilo import if store lookup fails
     const values = createMemo(() => {
       const active = store.themes[store.active]
-      if (active) return resolveTheme(active, store.mode)
+      if (active) {
+        return resolveTheme(active, store.mode)
+      }
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[saved]
-        if (theme) return resolveTheme(theme, store.mode)
+        if (theme) {
+          return resolveTheme(theme, store.mode)
+        }
       }
 
       return resolveTheme(store.themes.kilo, store.mode) // kilocode_change
@@ -563,8 +573,10 @@ function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJs
   const diffAlpha = isDark ? 0.22 : 0.14
   const diffAddedBg = tint(bg, ansiColors.green, diffAlpha)
   const diffRemovedBg = tint(bg, ansiColors.red, diffAlpha)
-  const diffAddedLineNumberBg = tint(grays[3], ansiColors.green, diffAlpha)
-  const diffRemovedLineNumberBg = tint(grays[3], ansiColors.red, diffAlpha)
+  const diffContextBg = grays[2]
+  const diffAddedLineNumberBg = tint(diffContextBg, ansiColors.green, diffAlpha)
+  const diffRemovedLineNumberBg = tint(diffContextBg, ansiColors.red, diffAlpha)
+  const diffLineNumber = textMuted
 
   return {
     theme: {
@@ -604,8 +616,8 @@ function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJs
       diffHighlightRemoved: ansiColors.redBright,
       diffAddedBg,
       diffRemovedBg,
-      diffContextBg: grays[1],
-      diffLineNumber: grays[6],
+      diffContextBg,
+      diffLineNumber,
       diffAddedLineNumberBg,
       diffRemovedLineNumberBg,
 

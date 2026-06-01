@@ -75,6 +75,8 @@ export const dict = {
   "ui.messagePart.context.list.one": "{{count}} liste",
   "ui.messagePart.context.list.other": "{{count}} lister",
   "ui.messagePart.diagnostic.error": "Fejl",
+  "ui.messagePart.mcp.input": "Input",
+  "ui.messagePart.mcp.output": "Output",
   "ui.messagePart.title.edit": "Rediger",
   "ui.messagePart.title.write": "Skriv",
   "ui.messagePart.option.typeOwnAnswer": "Skriv dit eget svar",
@@ -93,6 +95,18 @@ export const dict = {
   "ui.textField.copied": "Kopieret",
 
   "ui.imagePreview.alt": "Billedforhåndsvisning",
+  // kilocode_change start
+  "ui.mermaid.rendering": "Renderer Mermaid-diagram...",
+  "ui.mermaid.renderError": "Mermaid-rendering mislykkedes: {{message}}",
+  "ui.mermaid.errorDefault": "Kan ikke rendere Mermaid-diagram.",
+  "ui.mermaid.errorEmpty": "Mermaid renderede et tomt diagram.",
+  "ui.mermaid.download": "Download",
+  "ui.mermaid.copySource": "Kopiér Mermaid-kilde",
+  "ui.mermaid.copySvg": "Kopiér SVG",
+  "ui.mermaid.copyPng": "Kopiér PNG",
+  "ui.mermaid.downloadSvg": "Download SVG",
+  "ui.mermaid.downloadPng": "Download PNG",
+  // kilocode_change end
   "ui.scrollView.ariaLabel": "rulbart indhold",
 
   "ui.tool.read": "Læs",
@@ -102,7 +116,6 @@ export const dict = {
   "ui.tool.grep": "Grep",
   "ui.tool.webfetch": "Webhentning",
   "ui.tool.websearch": "Websøgning",
-  "ui.tool.codesearch": "Kodesøgning",
   "ui.tool.shell": "Shell",
   "ui.tool.patch": "Patch",
   "ui.tool.todos": "Opgaver",

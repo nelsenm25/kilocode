@@ -3,7 +3,13 @@ import * as os from "os"
 import * as fs from "fs/promises"
 import { spawn } from "../util/process"
 import simpleGit from "simple-git"
-import { parseWorktreeList, normalizePath } from "./git-import"
+import {
+  parseWorktreeList,
+  normalizePath,
+  parseForEachRefOutput,
+  buildBranchList,
+  type BranchListItem,
+} from "./git-import"
 import type { Semaphore } from "./semaphore"
 
 interface GitOpsOptions {
@@ -36,11 +42,19 @@ interface ExecOptions {
   stdin?: string
 }
 
-interface ExecResult {
+export interface ExecResult {
   code: number
   stdout: string
   stderr: string
 }
+
+/**
+ * Fixed SSH command injected by {@link nonInteractiveEnv} when the user has
+ * not already configured their own. Exported so callers can check whether a
+ * `GIT_SSH_COMMAND` originated from Kilo (safe) or was inherited from the
+ * parent process (untrusted).
+ */
+export const KILO_NON_INTERACTIVE_SSH_COMMAND = "ssh -o BatchMode=yes"
 
 /**
  * Build environment variables that prevent git and SSH from opening interactive
@@ -57,9 +71,18 @@ export function nonInteractiveEnv(): NodeJS.ProcessEnv {
     GIT_TERMINAL_PROMPT: "0",
   }
   if (!process.env.GIT_SSH_COMMAND) {
-    env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes"
+    env.GIT_SSH_COMMAND = KILO_NON_INTERACTIVE_SSH_COMMAND
   }
   return env
+}
+
+/**
+ * True when `env.GIT_SSH_COMMAND` is the fixed value Kilo sets, rather than
+ * an inherited one from the parent process. Use this to decide whether it's
+ * safe to pass `allowUnsafeSshCommand: true` to simple-git.
+ */
+export function isKiloOwnedSshCommand(env: NodeJS.ProcessEnv): boolean {
+  return env.GIT_SSH_COMMAND === KILO_NON_INTERACTIVE_SSH_COMMAND
 }
 
 export class GitOps {
@@ -205,7 +228,7 @@ export class GitOps {
     const remote = await this.resolveRemote(cwd, branch)
     const cacheKey = `default-branch:${cwd}:${remote}`
     const cached = this.getCached(cacheKey)
-    if (cached !== undefined) return cached
+    if (cached !== undefined) return cached === "" ? undefined : cached
 
     const head = await this.raw(["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`], cwd).catch(() => "")
     const result = head || undefined
@@ -217,6 +240,31 @@ export class GitOps {
     return this.raw(["rev-parse", "--verify", "--quiet", `refs/remotes/${ref}`], cwd)
       .then(() => true)
       .catch(() => false)
+  }
+
+  /**
+   * List local branches and `origin/*` remotes sorted by last commit date,
+   * with the resolved default branch flagged. Mirrors WorktreeManager's
+   * `listBranches` shape but takes `cwd` per call so it works outside the
+   * worktree context (e.g. for the diff viewer's base branch picker).
+   */
+  async listBranches(cwd: string): Promise<{ branches: BranchListItem[]; defaultBranch: string }> {
+    const def = (await this.resolveDefaultBranch(cwd)) ?? ""
+    const raw = await this.raw(
+      [
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--format=%(refname)\t%(committerdate:iso-strict)",
+        "refs/heads/",
+        "refs/remotes/origin/",
+      ],
+      cwd,
+    ).catch((err) => {
+      this.log("listBranches: for-each-ref failed", err instanceof Error ? err.message : String(err))
+      return ""
+    })
+    const { locals, remotes, dates } = parseForEachRefOutput(raw)
+    return { branches: buildBranchList(locals, remotes, dates, def), defaultBranch: def }
   }
 
   /** Return the set of worktree paths for the repo, excluding bare entries. */
@@ -471,6 +519,17 @@ export class GitOps {
     const first = lines[0]
     if (first) return [{ reason: first }]
     return [{ reason: "Patch does not apply cleanly" }]
+  }
+
+  /**
+   * Run a git command returning `{code, stdout, stderr}`. Gated by the shared
+   * semaphore and respects the dispose abort signal. Never throws — commands
+   * with non-zero exit codes resolve normally (nothrow semantics), making this
+   * suitable for callers that need to tolerate legitimate failures (e.g.
+   * `merge-base` on an orphan branch, `ls-files --error-unmatch`).
+   */
+  execGit(args: string[], cwd: string, options?: { stdin?: string }): Promise<ExecResult> {
+    return this.exec(args, cwd, options)
   }
 
   private exec(args: string[], cwd: string, options?: ExecOptions): Promise<ExecResult> {

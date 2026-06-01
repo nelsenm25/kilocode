@@ -4,6 +4,7 @@ import type { WorktreeStateManager } from "./WorktreeStateManager"
 import { capture as captureGitState, apply as applyGitState, type GitSnapshot } from "./git-transfer"
 import { getErrorMessage } from "../kilo-provider-utils"
 import { PLATFORM } from "./constants"
+import { recordForkHandoff } from "./fork-handoff"
 
 export interface ContinueContext {
   root: string
@@ -82,6 +83,9 @@ export async function forkSession(ctx: ContinueContext, sessionId: string, dir: 
   }
   try {
     const { data } = await client.session.fork({ sessionID: sessionId, directory: dir }, { throwOnError: true })
+    await recordForkHandoff({ client, sessionId: data.id, directory: dir }).catch((err) => {
+      ctx.log("Failed to record fork handoff:", getErrorMessage(err))
+    })
     return { ok: true, value: data }
   } catch (err) {
     return { ok: false, error: `Failed to fork session: ${getErrorMessage(err)}` }
@@ -99,8 +103,12 @@ export function registerSession(
   const state = ctx.getStateManager()
   if (state) state.addSession(session.id, worktreeId)
   ctx.registerWorktreeSession(session.id, result.path)
-  ctx.registerSession(session)
+  // Push state before registerSession so the webview knows this is a worktree
+  // session before receiving the sessionCreated message. Without this ordering,
+  // the sessionCreated handler would add the session to the local tab because
+  // managedSessions (and thus worktreeSessionIds) hadn't been updated yet.
   ctx.notifyReady(session.id, result, worktreeId)
+  ctx.registerSession(session)
   ctx.capture("Continue in Worktree", { source: PLATFORM, sessionId: session.id, worktreeId })
   ctx.log(`Continued sidebar session ${sourceId} → worktree ${worktreeId} (session ${session.id})`)
 }

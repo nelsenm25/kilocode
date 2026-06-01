@@ -82,6 +82,8 @@ export const dict = {
   "ui.messagePart.context.list.one": "{{count}} список",
   "ui.messagePart.context.list.other": "{{count}} списків",
   "ui.messagePart.diagnostic.error": "Помилка",
+  "ui.messagePart.mcp.input": "Вхід",
+  "ui.messagePart.mcp.output": "Вихід",
   "ui.messagePart.title.edit": "Редагувати",
   "ui.messagePart.title.write": "Записати",
   "ui.messagePart.option.typeOwnAnswer": "Введіть власну відповідь",
@@ -100,6 +102,18 @@ export const dict = {
   "ui.textField.copied": "Скопійовано",
 
   "ui.imagePreview.alt": "Попередній перегляд зображення",
+  // kilocode_change start
+  "ui.mermaid.rendering": "Відтворення діаграми Mermaid...",
+  "ui.mermaid.renderError": "Не вдалося відтворити Mermaid: {{message}}",
+  "ui.mermaid.errorDefault": "Не вдалося відтворити діаграму Mermaid.",
+  "ui.mermaid.errorEmpty": "Mermaid відтворив порожню діаграму.",
+  "ui.mermaid.download": "Завантажити",
+  "ui.mermaid.copySource": "Копіювати вихідний код Mermaid",
+  "ui.mermaid.copySvg": "Копіювати SVG",
+  "ui.mermaid.copyPng": "Копіювати PNG",
+  "ui.mermaid.downloadSvg": "Завантажити SVG",
+  "ui.mermaid.downloadPng": "Завантажити PNG",
+  // kilocode_change end
   "ui.scrollView.ariaLabel": "вміст з прокруткою",
 
   "ui.fileSearch.placeholder": "Знайти",
@@ -155,7 +169,7 @@ export const dict = {
   "ui.message.copyResponse": "Копіювати відповідь",
   "ui.message.copied": "Скопійовано",
   "ui.message.forkMessage": "Fork to new session",
-  "ui.message.revertMessage": "Revert message",
+  "ui.message.revertMessage": "Повернутися сюди",
   "ui.message.revert": "Повернутися до цього місця",
   "ui.message.interrupted": "Перервано",
   "ui.message.queued": "В черзі",

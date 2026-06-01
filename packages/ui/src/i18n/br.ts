@@ -76,6 +76,8 @@ export const dict = {
   "ui.messagePart.context.list.one": "{{count}} lista",
   "ui.messagePart.context.list.other": "{{count}} listas",
   "ui.messagePart.diagnostic.error": "Erro",
+  "ui.messagePart.mcp.input": "Entrada",
+  "ui.messagePart.mcp.output": "Saída",
   "ui.messagePart.title.edit": "Editar",
   "ui.messagePart.title.write": "Escrever",
   "ui.messagePart.option.typeOwnAnswer": "Digite sua própria resposta",
@@ -94,6 +96,18 @@ export const dict = {
   "ui.textField.copied": "Copiado",
 
   "ui.imagePreview.alt": "Visualização de imagem",
+  // kilocode_change start
+  "ui.mermaid.rendering": "Renderizando diagrama Mermaid...",
+  "ui.mermaid.renderError": "Falha ao renderizar Mermaid: {{message}}",
+  "ui.mermaid.errorDefault": "Não foi possível renderizar o diagrama Mermaid.",
+  "ui.mermaid.errorEmpty": "Mermaid renderizou um diagrama vazio.",
+  "ui.mermaid.download": "Baixar",
+  "ui.mermaid.copySource": "Copiar código Mermaid",
+  "ui.mermaid.copySvg": "Copiar SVG",
+  "ui.mermaid.copyPng": "Copiar PNG",
+  "ui.mermaid.downloadSvg": "Baixar SVG",
+  "ui.mermaid.downloadPng": "Baixar PNG",
+  // kilocode_change end
   "ui.scrollView.ariaLabel": "conteúdo rolável",
 
   "ui.tool.read": "Ler",
@@ -103,7 +117,6 @@ export const dict = {
   "ui.tool.grep": "Grep",
   "ui.tool.webfetch": "Buscar Web",
   "ui.tool.websearch": "Pesquisa na Web",
-  "ui.tool.codesearch": "Pesquisa de Código",
   "ui.tool.shell": "Shell",
   "ui.tool.patch": "Patch",
   "ui.tool.todos": "Tarefas",

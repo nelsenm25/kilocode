@@ -2,11 +2,12 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
-import { Log } from "./util/log"
+import * as Log from "@opencode-ai/core/util/log"
 // kilocode_change start
 // import { LoginCommand, LogoutCommand, SwitchCommand, OrgsCommand } from "./cli/cmd/account"
 // import { ConsoleCommand } from "./cli/cmd/account"
 // kilocode_change end
+import { ConsoleCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
@@ -14,10 +15,11 @@ import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { Installation } from "./installation"
-import { NamedError } from "@opencode-ai/util/error"
+import { InstallationBuildKind, InstallationVersion } from "@opencode-ai/core/installation/version" // kilocode_change - add InstallationBuildKind
+import { NamedError } from "@opencode-ai/core/util/error"
 import { FormatError } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
-import { Filesystem } from "./util/filesystem"
+import { Filesystem } from "@/util/filesystem"
 import { ConfigCommand as ConfigCLICommand } from "./cli/cmd/config" // kilocode_change
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
@@ -33,9 +35,13 @@ import { EOL } from "os"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 import { RemoteCommand } from "./cli/cmd/remote" // kilocode_change
+import { RollCallCommand } from "./kilocode/cli/cmd/roll-call" // kilocode_change
+import { DevSetupCommand, DevAliasCommand } from "./kilocode/cli/dev-setup" // kilocode_change
+import { DaemonCommand } from "./kilocode/cli/cmd/daemon" // kilocode_change
+import { KiloConsoleCommand } from "./kilocode/cli/cmd/console" // kilocode_change
 // kilocode_change start - Import telemetry, instance disposal, and legacy migration
 import { Telemetry } from "@kilocode/kilo-telemetry"
-import { Instance } from "./project/instance" // kilocode_change
+import { InstanceRuntime } from "./project/instance-runtime" // kilocode_change
 import { migrateLegacyKiloAuth, ENV_FEATURE, ENV_VERSION } from "@kilocode/kilo-gateway"
 
 // kilocode_change - set feature for tracking. 'serve' is spawned by other services
@@ -49,20 +55,25 @@ if (!process.env[ENV_FEATURE]) {
 
 // kilocode_change - set version so kilo-gateway can include it in the editor name header
 if (!process.env[ENV_VERSION]) {
-  process.env[ENV_VERSION] = Installation.VERSION
+  process.env[ENV_VERSION] = InstallationVersion
 }
 import { Config } from "./config/config"
+import { AppRuntime } from "./effect/app-runtime"
 import { Auth } from "./auth"
 // kilocode_change end
 import { DbCommand } from "./cli/cmd/db"
 import path from "path"
-import { Global } from "./global"
+import { Global } from "@opencode-ai/core/global"
 import { createHelpCommand } from "./kilocode/help-command" // kilocode_change
-import { JsonMigration } from "./storage/json-migration"
-import { Database } from "./storage/db"
+import { JsonMigration } from "@/storage/json-migration"
+import { Database } from "@/storage/db"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
+import { drizzle } from "drizzle-orm/bun-sqlite"
+import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
+
+const processMetadata = ensureProcessMetadata("main")
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -80,12 +91,13 @@ const args = hideBin(process.argv)
 
 function show(out: string) {
   const text = out.trimStart()
+  const end = out.endsWith(EOL) ? "" : EOL // kilocode_change - keep shell prompt on the next line
   if (!text.startsWith("opencode ")) {
     process.stderr.write(UI.logo() + EOL + EOL)
-    process.stderr.write(text)
+    process.stderr.write(text + end) // kilocode_change
     return
   }
-  process.stderr.write(out)
+  process.stderr.write(out + end) // kilocode_change
 }
 
 let cli = yargs(args) // kilocode_change
@@ -94,7 +106,7 @@ let cli = yargs(args) // kilocode_change
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
-  .version("version", "show version number", Installation.VERSION)
+  .version("version", "show version number", InstallationVersion)
   .alias("version", "v")
   .option("print-logs", {
     describe: "print logs to stderr",
@@ -127,29 +139,31 @@ let cli = yargs(args) // kilocode_change
     Heap.start()
 
     process.env.AGENT = "1"
-    process.env.KILO = "1"
+    process.env.KILO = "1" // kilocode_change
     process.env.KILO_PID = String(process.pid)
 
     Log.Default.info("opencode", {
-      version: Installation.VERSION,
+      version: InstallationVersion,
       args: process.argv.slice(2),
+      process_role: processMetadata.processRole,
+      run_id: processMetadata.runID,
     })
 
     // kilocode_change start - Initialize telemetry
-    const globalCfg = await Config.getGlobal()
+    const globalCfg = await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.getGlobal()))
     await Telemetry.init({
       dataPath: Global.Path.data,
-      version: Installation.VERSION,
+      version: InstallationVersion,
       enabled: globalCfg.experimental?.openTelemetry !== false,
     })
 
     // Migrate legacy Kilo CLI auth if needed
     await migrateLegacyKiloAuth(
-      async () => (await Auth.get("kilo")) !== undefined,
-      async (auth) => Auth.set("kilo", auth),
+      async () => (await AppRuntime.runPromise(Auth.Service.use((svc) => svc.get("kilo")))) !== undefined,
+      async (auth) => AppRuntime.runPromise(Auth.Service.use((svc) => svc.set("kilo", auth))),
     )
 
-    const kiloAuth = await Auth.get("kilo")
+    const kiloAuth = await AppRuntime.runPromise(Auth.Service.use((svc) => svc.get("kilo")))
     if (kiloAuth) {
       const token = kiloAuth.type === "oauth" ? kiloAuth.access : kiloAuth.key
       const accountId = kiloAuth.type === "oauth" ? kiloAuth.accountId : undefined
@@ -170,7 +184,7 @@ let cli = yargs(args) // kilocode_change
       let last = -1
       if (tty) process.stderr.write("\x1b[?25l")
       try {
-        await JsonMigration.run(Database.Client().$client, {
+        await JsonMigration.run(drizzle({ client: Database.Client().$client }), {
           progress: (event) => {
             const percent = Math.floor((event.current / event.total) * 100)
             if (percent === last && event.current !== event.total) return
@@ -219,6 +233,7 @@ let cli = yargs(args) // kilocode_change
   .command(ServeCommand)
   // .command(WebCommand) // kilocode_change (Disabled unsupported opencode web UI)
   .command(ModelsCommand)
+  .command(RollCallCommand) // kilocode_change
   .command(StatsCommand)
   .command(ExportCommand)
   .command(ImportCommand)
@@ -226,9 +241,17 @@ let cli = yargs(args) // kilocode_change
   .command(PrCommand)
   .command(SessionCommand)
   .command(RemoteCommand) // kilocode_change
+  .command(DaemonCommand) // kilocode_change
+  .command(KiloConsoleCommand) // kilocode_change
   .command(ConfigCLICommand) // kilocode_change
   .command(PluginCommand)
   .command(DbCommand)
+
+// kilocode_change start - dev-only commands are hidden from release builds
+if (InstallationBuildKind !== "release") {
+  cli = cli.command(DevSetupCommand).command(DevAliasCommand)
+}
+// kilocode_change end
 
 // kilocode_change start - registered after initial chain to avoid self-referential type error
 cli = cli.command(createHelpCommand(() => cli))
@@ -303,7 +326,7 @@ try {
   await Telemetry.shutdown()
   // kilocode_change end
 
-  await Instance.disposeAll() // kilocode_change - safety net disposal (no-op if already disposed)
+  await InstanceRuntime.disposeAllInstances() // kilocode_change - safety net disposal (no-op if already disposed)
 
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless

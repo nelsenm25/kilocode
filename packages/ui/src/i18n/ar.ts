@@ -76,6 +76,8 @@ export const dict = {
   "ui.messagePart.context.list.one": "{{count}} قائمة",
   "ui.messagePart.context.list.other": "{{count}} قوائم",
   "ui.messagePart.diagnostic.error": "خطأ",
+  "ui.messagePart.mcp.input": "الإدخال",
+  "ui.messagePart.mcp.output": "الإخراج",
   "ui.messagePart.title.edit": "تحرير",
   "ui.messagePart.title.write": "كتابة",
   "ui.messagePart.option.typeOwnAnswer": "اكتب إجابتك الخاصة",
@@ -94,6 +96,18 @@ export const dict = {
   "ui.textField.copied": "تم النسخ",
 
   "ui.imagePreview.alt": "معاينة الصورة",
+  // kilocode_change start
+  "ui.mermaid.rendering": "جارٍ عرض مخطط Mermaid...",
+  "ui.mermaid.renderError": "فشل عرض Mermaid: {{message}}",
+  "ui.mermaid.errorDefault": "تعذر عرض مخطط Mermaid.",
+  "ui.mermaid.errorEmpty": "عرض Mermaid مخططًا فارغًا.",
+  "ui.mermaid.download": "تنزيل",
+  "ui.mermaid.copySource": "نسخ مصدر Mermaid",
+  "ui.mermaid.copySvg": "نسخ SVG",
+  "ui.mermaid.copyPng": "نسخ PNG",
+  "ui.mermaid.downloadSvg": "تنزيل SVG",
+  "ui.mermaid.downloadPng": "تنزيل PNG",
+  // kilocode_change end
   "ui.scrollView.ariaLabel": "محتوى قابل للتمرير",
 
   "ui.tool.read": "قراءة",
@@ -103,7 +117,6 @@ export const dict = {
   "ui.tool.grep": "Grep",
   "ui.tool.webfetch": "جلب الويب",
   "ui.tool.websearch": "بحث الويب",
-  "ui.tool.codesearch": "بحث الكود",
   "ui.tool.shell": "Shell",
   "ui.tool.patch": "تصحيح",
   "ui.tool.todos": "المهام",

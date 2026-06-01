@@ -1,160 +1,85 @@
 package ai.kilocode.client
 
-import ai.kilocode.client.plugin.KiloBundle
-import ai.kilocode.rpc.dto.KiloAppStateDto
-import ai.kilocode.rpc.dto.KiloAppStatusDto
-import ai.kilocode.rpc.dto.LoadErrorDto
-import ai.kilocode.rpc.dto.LoadProgressDto
-import ai.kilocode.rpc.dto.ProfileStatusDto
-import com.intellij.openapi.Disposable
+import ai.kilocode.client.app.KiloWorkspaceService
+import ai.kilocode.client.app.Workspace
+import ai.kilocode.client.session.SessionSidePanelManager
+import ai.kilocode.client.telemetry.Telemetry
+import ai.kilocode.log.KiloLog
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.IconLoader
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.content.ContentFactory
-import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import javax.swing.Box
-import javax.swing.BoxLayout
-import javax.swing.JPanel
-import javax.swing.SwingConstants
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class KiloToolWindowFactory : ToolWindowFactory {
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val svc = service<KiloAppService>()
-        val mgr = ToolWindowManager.getInstance(project)
-        val icon = JBLabel(
-            IconLoader.getIcon("/icons/kilo-content.svg", KiloToolWindowFactory::class.java),
-        ).apply {
-            horizontalAlignment = SwingConstants.CENTER
-            alignmentX = JPanel.CENTER_ALIGNMENT
-        }
-
-        val status = JBLabel(
-            KiloBundle.message("toolwindow.status.disconnected"),
-            SwingConstants.CENTER,
-        ).apply {
-            alignmentX = JPanel.CENTER_ALIGNMENT
-            font = JBUI.Fonts.label(13f)
-            foreground = UIUtil.getContextHelpForeground()
-            setAllowAutoWrapping(true)
-        }
-
-        val detail = JBLabel("", SwingConstants.CENTER).apply {
-            alignmentX = JPanel.CENTER_ALIGNMENT
-            font = JBUI.Fonts.smallFont()
-            foreground = UIUtil.getContextHelpForeground()
-            setAllowAutoWrapping(true)
-            setCopyable(true)
-        }
-
-        val body = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            isOpaque = false
-            add(icon)
-            add(Box.createVerticalStrut(JBUI.scale(16)))
-            add(status)
-            add(Box.createVerticalStrut(JBUI.scale(6)))
-            add(detail)
-        }
-
-        val panel = JPanel(GridBagLayout()).apply {
-            isOpaque = false
-            add(body, GridBagConstraints())
-        }
-
-        val content = ContentFactory.getInstance().createContent(panel, "", false)
-        val ui = Disposer.newDisposable()
-        val job = svc.watch { state ->
-            mgr.invokeLater {
-                status.text = title(state)
-                detail.text = details(state)
-                detail.isVisible = detail.text.isNotEmpty()
-            }
-        }
-        Disposer.register(ui, Disposable { job.cancel() })
-        content.setDisposer(ui)
-        toolWindow.contentManager.addContent(content)
-        ActionManager.getInstance().getAction("Kilo.Settings")?.let {
-            toolWindow.setTitleActions(listOf(it))
-        }
-        svc.connect()
-    }
-
-    private fun title(state: KiloAppStateDto): String =
-        when (state.status) {
-            KiloAppStatusDto.DISCONNECTED -> KiloBundle.message("toolwindow.status.disconnected")
-            KiloAppStatusDto.CONNECTING -> KiloBundle.message("toolwindow.status.connecting")
-            KiloAppStatusDto.LOADING -> KiloBundle.message("toolwindow.status.loading")
-            KiloAppStatusDto.READY -> KiloBundle.message("toolwindow.status.connected")
-            KiloAppStatusDto.ERROR -> KiloBundle.message(
-                "toolwindow.status.error",
-                state.error ?: KiloBundle.message("toolwindow.error.unknown"),
-            )
-        }
-
-    private fun details(state: KiloAppStateDto): String =
-        when (state.status) {
-            KiloAppStatusDto.LOADING -> progress(state.progress)
-            KiloAppStatusDto.READY -> ready(state)
-            KiloAppStatusDto.ERROR -> errors(state)
-            else -> ""
-        }
-
-    private fun progress(p: LoadProgressDto?): String {
-        if (p == null) return ""
-        val lines = mutableListOf<String>()
-        lines.add(item("Config", p.config))
-        lines.add(item("Notifications", p.notifications))
-        lines.add(profile(p.profile))
-        return "<html>${lines.joinToString("<br>")}</html>"
-    }
-
-    private fun item(name: String, loaded: Boolean): String =
-        if (loaded) "$CHECK $name" else "$DOTS $name"
-
-    private fun profile(status: ProfileStatusDto): String =
-        when (status) {
-            ProfileStatusDto.PENDING -> "$DOTS Profile"
-            ProfileStatusDto.LOADED -> "$CHECK Profile"
-            ProfileStatusDto.NOT_LOGGED_IN -> "$DASH Profile (not logged in)"
-        }
-
-    private fun ready(state: KiloAppStateDto): String {
-        val svc = service<KiloAppService>()
-        val ver = svc.version
-        val lines = mutableListOf<String>()
-        if (ver != null) lines.add("CLI: $ver")
-        val p = state.progress
-        if (p != null && p.profile == ProfileStatusDto.NOT_LOGGED_IN) {
-            lines.add("Profile: not logged in")
-        }
-        return if (lines.isEmpty()) "" else "<html>${lines.joinToString("<br>")}</html>"
-    }
-
-    private fun errors(state: KiloAppStateDto): String {
-        if (state.errors.isEmpty()) return ""
-        val lines = state.errors.map(::formatError)
-        return "<html>Failed to load:<br>${lines.joinToString("<br>")}</html>"
-    }
-
-    private fun formatError(err: LoadErrorDto): String {
-        val suffix = err.detail ?: err.status?.let { "HTTP $it" } ?: ""
-        return if (suffix.isEmpty()) "$CROSS ${err.resource}"
-        else "$CROSS ${err.resource}: $suffix"
-    }
+/**
+ * Creates the Kilo Code tool window and delegates session content management.
+ *
+ * Resolves the project directory through the backend (handles split-mode
+ * where `project.basePath` is a synthetic frontend path) before creating
+ * the workspace. The tool window shows a loading state until resolution
+ * completes.
+ */
+class KiloToolWindowFactory : ToolWindowFactory, DumbAware {
 
     companion object {
-        private const val CHECK = "\u2713"
-        private const val CROSS = "\u2717"
-        private const val DOTS = "\u2026"
-        private const val DASH = "\u2013"
+        private val LOG = KiloLog.create(KiloToolWindowFactory::class.java)
+    }
+
+    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        val start = System.currentTimeMillis()
+        try {
+            val workspaces = service<KiloWorkspaceService>()
+            val cs = CoroutineScope(SupervisorJob())
+            val hint = project.basePath ?: ""
+
+            cs.launch {
+                val dir = workspaces.resolveProjectDirectory(hint)
+                val workspace = workspaces.workspace(dir)
+                withContext(Dispatchers.Main) {
+                    setup(project, toolWindow, workspace)
+                }
+                Telemetry.send("Tool Window Opened", mapOf(
+                    "projectResolved" to dir.isNotBlank().toString(),
+                    "durationMs" to (System.currentTimeMillis() - start).toString(),
+                ))
+            }
+        } catch (e: Exception) {
+            Telemetry.send("Tool Window Setup Failed", mapOf("stage" to "create", "errorClass" to e::class.java.name))
+            LOG.error("Failed to create Kilo tool window content", e)
+        }
+    }
+
+    private fun setup(
+        project: Project,
+        toolWindow: ToolWindow,
+        workspace: Workspace,
+    ) {
+        try {
+            val manager = SessionSidePanelManager(project, workspace)
+            val content = ContentFactory.getInstance().createContent(manager.component, "", false)
+            content.setDisposer(manager)
+            content.setPreferredFocusedComponent { manager.defaultFocusedComponent }
+            toolWindow.contentManager.addContent(content)
+            toolWindow.contentManager.setSelectedContent(content)
+            manager.newSession()
+
+            val actions = listOfNotNull(
+                ActionManager.getInstance().getAction("Kilo.NewSession"),
+                ActionManager.getInstance().getAction("Kilo.History"),
+                ActionManager.getInstance().getAction("Kilo.ShowProfile"),
+                ActionManager.getInstance().getAction("Kilo.Settings"),
+            )
+            toolWindow.setTitleActions(actions)
+        } catch (e: Exception) {
+            Telemetry.send("Tool Window Setup Failed", mapOf("stage" to "setup", "errorClass" to e::class.java.name))
+            LOG.error("Failed to set up Kilo tool window content", e)
+        }
     }
 }

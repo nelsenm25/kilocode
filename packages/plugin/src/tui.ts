@@ -12,8 +12,8 @@ import type {
   PermissionRequest,
   QuestionRequest,
   SessionStatus,
+  BackgroundProcessInfo,
   TextPart,
-  Workspace,
   Config as SdkConfig,
 } from "@kilocode/sdk/v2"
 import type { CliRenderer, ParsedKey, RGBA, SlotMode } from "@opentui/core"
@@ -30,7 +30,7 @@ export type TuiRouteCurrent =
       name: "session"
       params: {
         sessionID: string
-        initialPrompt?: unknown
+        prompt?: unknown
       }
     }
   | {
@@ -272,14 +272,11 @@ export type TuiState = {
     directory: string
   }
   readonly vcs: { branch?: string } | undefined
-  readonly workspace: {
-    list: () => ReadonlyArray<Workspace>
-    get: (workspaceID: string) => Workspace | undefined
-  }
   session: {
     count: () => number
     diff: (sessionID: string) => ReadonlyArray<TuiSidebarFileItem>
     todo: (sessionID: string) => ReadonlyArray<TuiSidebarTodoItem>
+    processes: (sessionID: string) => ReadonlyArray<TuiSidebarBackgroundProcessItem>
     messages: (sessionID: string) => ReadonlyArray<Message>
     status: (sessionID: string) => SessionStatus | undefined
     permission: (sessionID: string) => ReadonlyArray<PermissionRequest>
@@ -316,6 +313,11 @@ export type TuiSidebarMcpItem = {
 export type TuiSidebarLspItem = Pick<LspStatus, "id" | "root" | "status">
 
 export type TuiSidebarTodoItem = Pick<Todo, "content" | "status">
+
+export type TuiSidebarBackgroundProcessItem = Pick<
+  BackgroundProcessInfo,
+  "id" | "pid" | "command" | "cwd" | "description" | "ports" | "status" | "output"
+>
 
 export type TuiSidebarFileItem = {
   file: string
@@ -484,8 +486,6 @@ export type TuiPluginApi = {
   state: TuiState
   theme: TuiTheme
   client: KiloClient
-  scopedClient: (workspaceID?: string) => KiloClient
-  workspace: TuiWorkspace
   event: TuiEventBus
   renderer: CliRenderer
   slots: TuiSlots

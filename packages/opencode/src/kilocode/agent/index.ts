@@ -1,25 +1,22 @@
 // kilocode_change - new file
 import { Permission } from "@/permission"
-import { NamedError } from "@opencode-ai/util/error"
-import { Glob } from "../../util/glob"
-import { Truncate } from "../../tool/truncate"
+import { NamedError } from "@opencode-ai/core/util/error"
+import { Glob } from "@opencode-ai/core/util/glob"
+import * as Truncate from "../../tool/truncate"
 import { Config } from "../../config/config"
 import { Instance } from "../../project/instance"
-import { Global } from "@/global"
-import { Telemetry } from "@kilocode/kilo-telemetry"
+import { makeRuntime } from "@/effect/run-service"
 import z from "zod"
 import path from "path"
+import { Global } from "@opencode-ai/core/global"
 
 import PROMPT_DEBUG from "../../agent/prompt/debug.txt"
 import PROMPT_ORCHESTRATOR from "../../agent/prompt/orchestrator.txt"
 import PROMPT_ASK from "../../agent/prompt/ask.txt"
 import PROMPT_EXPLORE from "../../agent/prompt/explore.txt"
 
-// Safe bash commands that don't need user approval.
-// Only commands that cannot execute arbitrary code or subprocesses.
 export const bash: Record<string, "allow" | "ask" | "deny"> = {
   "*": "ask",
-  // read-only / informational
   "cat *": "allow",
   "head *": "allow",
   "tail *": "allow",
@@ -40,7 +37,6 @@ export const bash: Record<string, "allow" | "ask" | "deny"> = {
   "whoami *": "allow",
   "printenv *": "allow",
   "man *": "allow",
-  // text processing
   "grep *": "allow",
   "rg *": "allow",
   "ag *": "allow",
@@ -49,26 +45,20 @@ export const bash: Record<string, "allow" | "ask" | "deny"> = {
   "cut *": "allow",
   "tr *": "allow",
   "jq *": "allow",
-  // file operations
   "touch *": "allow",
   "mkdir *": "allow",
   "cp *": "allow",
   "mv *": "allow",
-  // compilers (no script execution)
   "tsc *": "allow",
   "tsgo *": "allow",
-  // archive
   "tar *": "allow",
   "unzip *": "allow",
   "gzip *": "allow",
   "gunzip *": "allow",
 }
 
-// Read-only bash commands for ask/plan agents.
-// Unknown commands are DENIED (not "ask") because these agents must never modify the filesystem.
 export const readOnlyBash: Record<string, "allow" | "ask" | "deny"> = {
   "*": "deny",
-  // read-only / informational
   "cat *": "allow",
   "head *": "allow",
   "tail *": "allow",
@@ -89,7 +79,6 @@ export const readOnlyBash: Record<string, "allow" | "ask" | "deny"> = {
   "whoami *": "allow",
   "printenv *": "allow",
   "man *": "allow",
-  // text processing (stdout only, no file modification)
   "grep *": "allow",
   "rg *": "allow",
   "ag *": "allow",
@@ -98,7 +87,6 @@ export const readOnlyBash: Record<string, "allow" | "ask" | "deny"> = {
   "cut *": "allow",
   "tr *": "allow",
   "jq *": "allow",
-  // git — allowlist of read-only subcommands, deny everything else
   "git *": "deny",
   "git log *": "allow",
   "git show *": "allow",
@@ -120,8 +108,107 @@ export const readOnlyBash: Record<string, "allow" | "ask" | "deny"> = {
   "git branch -a *": "allow",
   "git branch -r *": "allow",
   "git remote -v *": "allow",
-  // gh — require user approval since commands vary widely
   "gh *": "ask",
+  "*\n*": "deny",
+  "*<(*": "deny",
+  "*|*": "deny",
+  "*;*": "deny",
+  "*&&*": "deny",
+  "*&*": "deny",
+  "*$(*": "deny",
+  "*`*": "deny",
+  "*>*": "deny",
+  "* > *": "deny",
+  "*>>*": "deny",
+  "* >> *": "deny",
+  "*>|*": "deny",
+  "* >| *": "deny",
+  "sort -o *": "deny",
+  "sort * -o *": "deny",
+  "sort --output*": "deny",
+  "sort * --output*": "deny",
+}
+
+function askGuard(mcp: Record<string, "allow" | "ask" | "deny"> = {}) {
+  return Permission.fromConfig({
+    "*": "deny",
+    bash: readOnlyBash,
+    read: {
+      "*": "allow",
+      "*.env": "ask",
+      "*.env.*": "ask",
+      "*.env.example": "allow",
+    },
+    grep: "allow",
+    glob: "allow",
+    list: "allow",
+    skill: "allow",
+    question: "allow",
+    webfetch: "allow",
+    websearch: "allow",
+    codesearch: "allow",
+    codebase_search: "allow",
+    semantic_search: "allow",
+    external_directory: {
+      [Truncate.GLOB]: "allow",
+    },
+    ...mcp,
+  })
+}
+
+function denies(user: Permission.Ruleset) {
+  return user.filter((rule) => rule.action === "deny")
+}
+
+function askEditGuard() {
+  return Permission.fromConfig({ edit: "deny" })
+}
+
+// Upstream v1.14.33 builds Agent state outside the Instance ALS, so reading
+// Instance.worktree here would crash. Thread worktree through from patchAgents
+// instead.
+function planEditRules(worktree: string) {
+  return {
+    "*": "deny" as const,
+    [path.join(".kilo", "plans", "*.md")]: "allow" as const,
+    [path.join(".opencode", "plans", "*.md")]: "allow" as const,
+    [path.relative(worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow" as const,
+  }
+}
+
+function planEditGuard(worktree: string) {
+  return Permission.fromConfig({ edit: planEditRules(worktree) })
+}
+
+function planGuard(worktree: string, mcp: Record<string, "allow" | "ask" | "deny"> = {}) {
+  return Permission.fromConfig({
+    "*": "deny",
+    question: "allow",
+    suggest: "allow",
+    skill: "allow",
+    plan_exit: "allow",
+    bash: readOnlyBash,
+    read: {
+      "*": "allow",
+      "*.env": "ask",
+      "*.env.*": "ask",
+      "*.env.example": "allow",
+    },
+    grep: "allow",
+    glob: "allow",
+    list: "allow",
+    webfetch: "allow",
+    websearch: "allow",
+    codesearch: "allow",
+    codebase_search: "allow",
+    semantic_search: "allow",
+    external_directory: {
+      [Truncate.GLOB]: "allow",
+      [path.join(Global.Path.data, "plans", "*")]: "allow",
+    },
+    edit: planEditRules(worktree),
+    ...mcp,
+  })
 }
 
 // Generate per-server MCP wildcard rules that allow MCP tools with user approval.
@@ -144,6 +231,16 @@ export function prepare(cfg: Config.Info): KiloData {
   const mcpRules = getMcpRules(cfg)
   const defaultsPatch = Permission.fromConfig({ bash, recall: "ask" })
   return { mcpRules, defaultsPatch }
+}
+
+export function cacheKey(cfg: Config.Info) {
+  return JSON.stringify({
+    agent: cfg.agent,
+    default_agent: cfg.default_agent,
+    mcp: cfg.mcp,
+    mode: cfg.mode,
+    permission: cfg.permission,
+  })
 }
 
 // Map "build" config key to "code" for backward compatibility.
@@ -172,22 +269,16 @@ export function processConfigItem(item: {
 }
 
 // Returns experimental_telemetry config for generate calls.
-export function telemetryOptions(cfg: Config.Info) {
-  return {
-    isEnabled: cfg.experimental?.openTelemetry !== false,
-    recordInputs: false,
-    recordOutputs: false,
-    tracer: Telemetry.getTracer() ?? undefined,
-    metadata: {
-      userId: cfg.username ?? "unknown",
-    },
-  }
+// AI SDK span recording (ai.* / gen_ai.*) is disabled.
+export function telemetryOptions(_cfg: Config.Info) {
+  return { isEnabled: false as const }
 }
 
 // Patch the base agents map in-place with all kilo-specific changes:
 // - Rename build → code
 // - Patch plan with readOnlyBash, mcpRules, .kilo paths
 // - Patch explore with codebase_search and conditional prompt
+// - Patch appropriate agents with semantic_search
 // - Add debug, orchestrator, ask agents
 export function patchAgents(
   agents: Record<
@@ -215,10 +306,21 @@ export function patchAgents(
   user: Permission.Ruleset,
   cfg: Config.Info,
   kilo: KiloData,
+  worktree: string,
+  whitelistedDirs: string[],
 ) {
   // Rename "build" → "code" for backward compatibility
   if (agents.build) {
-    agents.code = { ...agents.build, name: "code" }
+    agents.code = {
+      ...agents.build,
+      name: "code",
+      permission: Permission.merge(
+        defaults,
+        agents.build.permission,
+        user,
+        Permission.fromConfig({ semantic_search: "allow" }),
+      ),
+    }
     delete agents.build
   }
 
@@ -226,25 +328,13 @@ export function patchAgents(
   if (agents.plan) {
     agents.plan = {
       ...agents.plan,
-      description: "Plan mode. Only allows editing plan files; asks before editing anything else.",
+      description: "Plan mode. Can only edit plan files; all other filesystem mutations are denied.",
       permission: Permission.merge(
         defaults,
-        Permission.fromConfig({
-          question: "allow",
-          plan_exit: "allow",
-          bash: readOnlyBash,
-          ...kilo.mcpRules,
-          external_directory: {
-            [path.join(Global.Path.data, "plans", "*")]: "allow",
-          },
-          edit: {
-            "*": "ask",
-            [path.join(".kilo", "plans", "*.md")]: "allow",
-            [path.join(".opencode", "plans", "*.md")]: "allow",
-            [path.relative(Instance.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
-          },
-        }),
+        planGuard(worktree, kilo.mcpRules),
         user,
+        planEditGuard(worktree),
+        denies(user),
       ),
     }
   }
@@ -261,14 +351,21 @@ export function patchAgents(
           glob: "allow",
           list: "allow",
           bash: "allow",
+          skill: "allow",
           webfetch: "allow",
           websearch: "allow",
           codesearch: "allow",
           codebase_search: "allow",
+          semantic_search: "allow",
           read: "allow",
           external_directory: {
+            // Mirror upstream explore's shape: the outer "*": "deny" above wins
+            // over defaults' external_directory rules via findLast, so re-apply
+            // the full whitelist (Truncate.GLOB, tmp, skill, config, globalDirs)
+            // here. Upstream adds these inline in agent.ts; we do the same from
+            // within the patch.
             "*": "ask",
-            [Truncate.GLOB]: "allow",
+            ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
           },
         }),
         user,
@@ -289,7 +386,9 @@ export function patchAgents(
       defaults,
       Permission.fromConfig({
         question: "allow",
+        suggest: "allow", // kilocode_change
         plan_enter: "allow",
+        semantic_search: "allow",
       }),
       user,
     ),
@@ -312,6 +411,8 @@ export function patchAgents(
         glob: "allow",
         list: "allow",
         question: "allow",
+        skill: "allow",
+        suggest: "allow", // kilocode_change
         task: "allow",
         todoread: "allow",
         todowrite: "allow",
@@ -340,33 +441,7 @@ export function patchAgents(
     description: "Get answers and explanations without making changes to the codebase.",
     prompt: PROMPT_ASK,
     options: {},
-    permission: Permission.merge(
-      defaults,
-      user, // user before ask-specific so ask's deny+allowlist wins
-      Permission.fromConfig({
-        "*": "deny",
-        bash: readOnlyBash,
-        read: {
-          "*": "allow",
-          "*.env": "ask",
-          "*.env.*": "ask",
-          "*.env.example": "allow",
-        },
-        grep: "allow",
-        glob: "allow",
-        list: "allow",
-        question: "allow",
-        webfetch: "allow",
-        websearch: "allow",
-        codesearch: "allow",
-        codebase_search: "allow",
-        external_directory: {
-          [Truncate.GLOB]: "allow",
-        },
-        ...kilo.mcpRules,
-      }),
-      user.filter((r: Permission.Rule) => r.action === "deny"), // re-apply user denies so explicit MCP blocks win over mcpRules
-    ),
+    permission: Permission.merge(defaults, askGuard(kilo.mcpRules), user, askEditGuard(), denies(user)),
     mode: "primary",
     native: true,
   }
@@ -388,7 +463,8 @@ export const RemoveError = NamedError.create(
  */
 export async function remove(name: string) {
   const { Agent } = await import("../../agent/agent")
-  const agent = await Agent.get(name)
+  const agents = makeRuntime(Agent.Service, Agent.defaultLayer)
+  const agent = await agents.runPromise((svc) => svc.get(name))
   if (!agent) throw new RemoveError({ name, message: "agent not found" })
   if (agent.native) throw new RemoveError({ name, message: "cannot remove native agent" })
   // Prevent removal of organization-managed agents
@@ -399,8 +475,8 @@ export async function remove(name: string) {
   let found = false
 
   // 1. Delete .md files from config directories
-  const { Config } = await import("../../config/config")
-  const dirs = await Config.directories()
+  const { AppRuntime } = await import("@/effect/app-runtime")
+  const dirs = await AppRuntime.runPromise(Config.Service.use((svc) => svc.directories()))
   const patterns = ["{agent,agents}/**/" + name + ".md", "{mode,modes}/" + name + ".md"]
   for (const dir of dirs) {
     for (const pattern of patterns) {
@@ -445,5 +521,6 @@ export async function remove(name: string) {
 
   if (!found) throw new RemoveError({ name, message: "no agent file found on disk" })
 
-  await Instance.dispose()
+  const runtime = await import("../../project/instance-runtime")
+  await runtime.InstanceRuntime.disposeInstance(Instance.current)
 }

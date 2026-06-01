@@ -81,6 +81,8 @@ export const dict = {
   "ui.messagePart.context.list.one": "{{count}} Liste",
   "ui.messagePart.context.list.other": "{{count}} Listen",
   "ui.messagePart.diagnostic.error": "Fehler",
+  "ui.messagePart.mcp.input": "Eingabe",
+  "ui.messagePart.mcp.output": "Ausgabe",
   "ui.messagePart.title.edit": "Bearbeiten",
   "ui.messagePart.title.write": "Schreiben",
   "ui.messagePart.option.typeOwnAnswer": "Eigene Antwort eingeben",
@@ -99,6 +101,18 @@ export const dict = {
   "ui.textField.copied": "Kopiert",
 
   "ui.imagePreview.alt": "Bildvorschau",
+  // kilocode_change start
+  "ui.mermaid.rendering": "Mermaid-Diagramm wird gerendert...",
+  "ui.mermaid.renderError": "Mermaid-Rendering fehlgeschlagen: {{message}}",
+  "ui.mermaid.errorDefault": "Mermaid-Diagramm kann nicht gerendert werden.",
+  "ui.mermaid.errorEmpty": "Mermaid hat ein leeres Diagramm gerendert.",
+  "ui.mermaid.download": "Herunterladen",
+  "ui.mermaid.copySource": "Mermaid-Quelltext kopieren",
+  "ui.mermaid.copySvg": "SVG kopieren",
+  "ui.mermaid.copyPng": "PNG kopieren",
+  "ui.mermaid.downloadSvg": "SVG herunterladen",
+  "ui.mermaid.downloadPng": "PNG herunterladen",
+  // kilocode_change end
   "ui.scrollView.ariaLabel": "scrollbarer Inhalt",
 
   "ui.tool.read": "Lesen",
@@ -108,7 +122,6 @@ export const dict = {
   "ui.tool.grep": "Grep",
   "ui.tool.webfetch": "Webabruf",
   "ui.tool.websearch": "Websuche",
-  "ui.tool.codesearch": "Codesuche",
   "ui.tool.shell": "Shell",
   "ui.tool.patch": "Patch",
   "ui.tool.todos": "Aufgaben",
